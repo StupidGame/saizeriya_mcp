@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
-	import { buildSystemPrompt } from '$lib/zeriya-gpt/system-prompt';
+	import { buildPersonaPrompt, buildSystemPrompt } from '$lib/zeriya-gpt/system-prompt';
 
 	type ChatRole = 'user' | 'assistant';
 	type ChatMessage = { role: ChatRole; content: string };
@@ -10,6 +10,12 @@
 		label: string;
 		hint: string;
 	};
+
+	type StoredPersonaSettings = {
+		persona?: string;
+	};
+
+	const personaStorageKey = 'betterzeriya:zeriya-gpt:persona';
 
 	const modelOptions: ModelOption[] = [
 		{
@@ -53,10 +59,14 @@
 	let loadText = $state('');
 	let messages = $state<ChatMessage[]>([]);
 	let input = $state('');
+	let customPersona = $state('');
+	let personaPanelOpen = $state(false);
 	let generating = $state(false);
 	let error = $state('');
 	let listEl: HTMLDivElement | null = $state(null);
 	let textareaEl: HTMLTextAreaElement | null = $state(null);
+
+	const hasCustomPersona = $derived(Boolean(customPersona.trim()));
 
 	const getWebGPU = () =>
 		typeof navigator === 'undefined' ? null : ((navigator as Navigator & { gpu?: GPU }).gpu ?? null);
@@ -167,8 +177,10 @@
 		await scrollToBottom();
 
 		try {
+			const personaPrompt = buildPersonaPrompt(customPersona);
 			const requestMessages = [
 				{ role: 'system', content: buildSystemPrompt() },
+				...(personaPrompt ? [{ role: 'system', content: personaPrompt }] : []),
 				...messages
 					.slice(0, -1)
 					.map((m) => ({ role: m.role, content: m.content }))
@@ -230,6 +242,26 @@
 		textareaEl?.focus();
 	};
 
+	const persistPersona = () => {
+		if (typeof localStorage === 'undefined') return;
+		const persona = customPersona.trim();
+		if (!persona) {
+			localStorage.removeItem(personaStorageKey);
+			return;
+		}
+		localStorage.setItem(personaStorageKey, JSON.stringify({ persona }));
+	};
+
+	const handlePersonaInput = (event: Event) => {
+		customPersona = (event.currentTarget as HTMLTextAreaElement).value;
+		persistPersona();
+	};
+
+	const clearPersona = () => {
+		customPersona = '';
+		persistPersona();
+	};
+
 	const resetChat = () => {
 		if (generating) return;
 		messages = [];
@@ -244,6 +276,16 @@
 	};
 
 	onMount(() => {
+		const storedPersona = localStorage.getItem(personaStorageKey);
+		if (storedPersona) {
+			try {
+				const parsed = JSON.parse(storedPersona) as StoredPersonaSettings;
+				customPersona = typeof parsed.persona === 'string' ? parsed.persona : '';
+			} catch {
+				localStorage.removeItem(personaStorageKey);
+			}
+		}
+
 		webgpuSupported = detectWebGPU();
 		if (!webgpuSupported) {
 			error = 'このブラウザは WebGPU に未対応です。Chrome / Edge デスクトップ版でお試しください。';
@@ -266,7 +308,7 @@
 </svelte:head>
 
 <div class="mx-auto grid min-h-svh max-w-[860px] grid-rows-[auto_auto_auto_auto_minmax(0,1fr)_auto] bg-slate-50 px-4">
-	<header class="sticky top-0 z-10 grid grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-3 border-b border-slate-900/5 bg-slate-50/95 py-3.5 backdrop-blur-xl">
+	<header class="sticky top-0 z-10 grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 border-b border-slate-900/5 bg-slate-50/95 py-3.5 backdrop-blur-xl">
 		<a href={sessionHref} class="grid h-10 w-10 place-items-center rounded-full border border-slate-900/10 bg-white text-xl text-slate-950 no-underline" aria-label="戻る">
 			<span class="i-tabler-arrow-left"></span>
 		</a>
@@ -274,32 +316,74 @@
 			<strong class="text-base font-extrabold text-slate-950">zeriyaGPT</strong>
 			<small class="text-xs font-bold text-slate-500">WebGPU で動くブラウザ完結型アシスタント</small>
 		</div>
-		<button
-			class="grid h-10 w-10 place-items-center rounded-full border border-slate-900/10 bg-white text-xl text-slate-950 disabled:opacity-40"
-			type="button"
-			onclick={resetChat}
-			disabled={generating || messages.length === 0}
-			aria-label="会話をリセット"
-		>
-			<span class="i-tabler-refresh"></span>
-		</button>
+		<div class="flex items-center gap-2">
+			<button
+				class={hasCustomPersona
+					? 'grid h-10 w-10 place-items-center rounded-full border border-green-800 bg-green-50 text-xl text-green-800'
+					: 'grid h-10 w-10 place-items-center rounded-full border border-slate-900/10 bg-white text-xl text-slate-950'}
+				type="button"
+				onclick={() => (personaPanelOpen = !personaPanelOpen)}
+				aria-pressed={personaPanelOpen}
+				aria-label="ペルソナ設定"
+			>
+				<span class="i-tabler-user-cog"></span>
+			</button>
+			<button
+				class="grid h-10 w-10 place-items-center rounded-full border border-slate-900/10 bg-white text-xl text-slate-950 disabled:opacity-40"
+				type="button"
+				onclick={resetChat}
+				disabled={generating || messages.length === 0}
+				aria-label="会話をリセット"
+			>
+				<span class="i-tabler-refresh"></span>
+			</button>
+		</div>
 	</header>
 
-	<div class="flex gap-2 overflow-x-auto pt-3 pb-1">
-		{#each modelOptions as opt (opt.id)}
-			<button
-				class={opt.id === selectedModel
-					? 'grid flex-none gap-0.5 rounded-full border border-green-800 bg-green-50 px-3.5 py-2 text-left font-bold text-green-800 disabled:cursor-not-allowed disabled:opacity-50'
-					: 'grid flex-none gap-0.5 rounded-full border border-slate-900/10 bg-white px-3.5 py-2 text-left font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50'}
-				type="button"
-				onclick={() => switchModel(opt.id)}
-				disabled={generating || engineLoading}
-			>
-				<strong class="text-[13px]">{opt.label}</strong>
-				<small class={opt.id === selectedModel ? 'text-xs font-bold text-green-800' : 'text-xs font-bold text-slate-500'}>{opt.hint}</small>
-			</button>
-		{/each}
-	</div>
+	<section class="grid gap-2 pt-3 pb-1">
+		<div class="flex gap-2 overflow-x-auto">
+			{#each modelOptions as opt (opt.id)}
+				<button
+					class={opt.id === selectedModel
+						? 'grid flex-none gap-0.5 rounded-full border border-green-800 bg-green-50 px-3.5 py-2 text-left font-bold text-green-800 disabled:cursor-not-allowed disabled:opacity-50'
+						: 'grid flex-none gap-0.5 rounded-full border border-slate-900/10 bg-white px-3.5 py-2 text-left font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50'}
+					type="button"
+					onclick={() => switchModel(opt.id)}
+					disabled={generating || engineLoading}
+				>
+					<strong class="text-[13px]">{opt.label}</strong>
+					<small class={opt.id === selectedModel ? 'text-xs font-bold text-green-800' : 'text-xs font-bold text-slate-500'}>{opt.hint}</small>
+				</button>
+			{/each}
+		</div>
+
+		{#if personaPanelOpen}
+			<div class="grid gap-2 rounded-xl border border-slate-900/10 bg-white p-3 shadow-[0_14px_40px_rgba(17,24,39,0.06)]">
+				<div class="flex items-center justify-between gap-3">
+					<strong class="text-sm font-extrabold text-slate-950">ペルソナ</strong>
+					{#if hasCustomPersona}
+						<span class="rounded-full bg-green-50 px-2 py-1 text-[11px] font-extrabold text-green-800">有効</span>
+					{/if}
+				</div>
+				<textarea
+					class="min-h-24 w-full resize-y rounded-lg border border-slate-900/10 bg-slate-50 px-3 py-2 text-sm leading-relaxed text-slate-950 outline-none focus:border-green-800 focus:ring-4 focus:ring-green-800/10"
+					value={customPersona}
+					oninput={handlePersonaInput}
+					placeholder="例: 落ち着いたソムリエ。短く、ワインとの相性を先に話す。"
+				></textarea>
+				<div class="flex justify-end">
+					<button
+						class="min-h-9 rounded-lg border border-slate-900/10 bg-white px-3 text-xs font-extrabold text-slate-700 disabled:opacity-40"
+						type="button"
+						onclick={clearPersona}
+						disabled={!hasCustomPersona}
+					>
+						クリア
+					</button>
+				</div>
+			</div>
+		{/if}
+	</section>
 
 	{#if engineLoading}
 		<div class="my-2 grid gap-1.5 rounded-xl border border-green-800/20 bg-green-50 px-3.5 py-3 font-bold text-green-800" role="status">

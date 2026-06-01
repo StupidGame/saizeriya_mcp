@@ -8,11 +8,22 @@ type MenuItem = {
   alcohol_check?: number
 }
 
+const customPersonaMaxLength = 1200
+
+export const normalizeCustomPersona = (text = '') => text.trim().slice(0, customPersonaMaxLength)
+
 export const buildMenuList = () =>
   (menuData as MenuItem[])
     .filter((item) => item.price > 0)
     .map((item) => `- ${normalizeMenuName(item.name)} (${item.price}円)`)
     .join('\n')
+
+export const buildPersonaPrompt = (persona = '') => {
+  const normalizedPersona = normalizeCustomPersona(persona)
+  return normalizedPersona
+    ? `カスタムペルソナ:\n既存のルールを守ったまま、以下の人物像・口調で応答してください。\n${normalizedPersona}`
+    : ''
+}
 
 export const buildSystemPrompt =
   () => `あなたは「zeriyaGPT」、サイゼリヤのメニューに詳しいフレンドリーな日本語アシスタントです。

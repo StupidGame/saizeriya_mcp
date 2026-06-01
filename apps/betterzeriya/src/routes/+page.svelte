@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import AppDialog from '$lib/components/AppDialog.svelte';
 	import { onDestroy, onMount } from 'svelte';
@@ -38,6 +39,12 @@
 		label: string;
 	};
 
+	type ConnectionSnippet = {
+		id: string;
+		label: string;
+		value: string;
+	};
+
 	let qrURL = $state('');
 	let peopleCount = $state(2);
 	let pendingSession = $state<PendingSession | null>(null);
@@ -48,12 +55,65 @@
 	let confirmDialogOpen = $state(false);
 	let peopleDialogOpen = $state(false);
 	let manualDialogOpen = $state(false);
+	let mcpDialogOpen = $state(false);
+	let appOrigin = $state('');
+	let copiedConnectionId = $state('');
 	let cameras = $state<CameraOption[]>([]);
 	let selectedCameraId = $state('');
 	let cameraBusy = $state(false);
 	let video: HTMLVideoElement | null = null;
 	let QrScanner: typeof import('qr-scanner').default | null = null;
 	let scanner: import('qr-scanner').default | null = null;
+
+	const fallbackOrigin = 'https://your-vercel-domain.vercel.app';
+	const mcpURL = $derived(`${appOrigin || fallbackOrigin}/mcp`);
+	const connectionSnippets = $derived([
+		{
+			id: 'url',
+			label: 'MCP URL',
+			value: mcpURL
+		},
+		{
+			id: 'chatgpt',
+			label: 'ChatGPT',
+			value: [
+				'Name: Betterzeriya',
+				`MCP URL: ${mcpURL}`,
+				'Authentication: No authentication',
+				'Transport: Streamable HTTP'
+			].join('\n')
+		},
+		{
+			id: 'codex-config',
+			label: 'Codex',
+			value: [
+				`[mcp_servers.betterzeriya]`,
+				`url = "${mcpURL}"`,
+				`default_tools_approval_mode = "prompt"`
+			].join('\n')
+		},
+		{
+			id: 'claude-code',
+			label: 'Claude Code',
+			value: `claude mcp add --transport http betterzeriya ${mcpURL}`
+		},
+		{
+			id: 'claude-json',
+			label: 'Claude Code JSON',
+			value: JSON.stringify(
+				{
+					mcpServers: {
+						betterzeriya: {
+							type: 'http',
+							url: mcpURL
+						}
+					}
+				},
+				null,
+				2
+			)
+		}
+	] satisfies ConnectionSnippet[]);
 
 	const loadQrScanner = async () => {
 		QrScanner ??= (await import('qr-scanner')).default;
@@ -103,6 +163,41 @@
 	const openManualDialog = () => {
 		error = '';
 		manualDialogOpen = true;
+	};
+
+	const openMcpDialog = () => {
+		error = '';
+		copiedConnectionId = '';
+		if (browser) {
+			appOrigin = window.location.origin;
+		}
+		mcpDialogOpen = true;
+	};
+
+	const copyText = async (value: string) => {
+		if (navigator.clipboard?.writeText) {
+			await navigator.clipboard.writeText(value);
+			return;
+		}
+
+		const textarea = document.createElement('textarea');
+		textarea.value = value;
+		textarea.setAttribute('readonly', '');
+		textarea.style.position = 'fixed';
+		textarea.style.opacity = '0';
+		document.body.append(textarea);
+		textarea.select();
+		document.execCommand('copy');
+		textarea.remove();
+	};
+
+	const copyConnectionSnippet = async (snippet: ConnectionSnippet) => {
+		try {
+			await copyText(snippet.value);
+			copiedConnectionId = snippet.id;
+		} catch (caught) {
+			error = caught instanceof Error ? caught.message : 'Copy failed';
+		}
 	};
 
 	const prepareSession = async (value: string) => {
@@ -290,6 +385,9 @@
 	};
 
 	onMount(() => {
+		if (browser) {
+			appOrigin = window.location.origin;
+		}
 		void startScanner();
 	});
 
@@ -336,7 +434,7 @@
 	</header>
 
 	<div
-		class="absolute top-[calc(max(8px,env(safe-area-inset-top))+46px)] right-4 left-4 z-10 mx-auto grid max-w-[520px] grid-cols-2 gap-1.5 rounded-lg border border-white/10 bg-white/10 p-1 backdrop-blur-2xl"
+		class="absolute top-[calc(max(8px,env(safe-area-inset-top))+46px)] right-4 left-4 z-10 mx-auto grid max-w-[560px] grid-cols-3 gap-1.5 rounded-lg border border-white/10 bg-white/10 p-1 backdrop-blur-2xl"
 		role="tablist"
 		aria-label="入力方法"
 	>
@@ -347,6 +445,10 @@
 		<button class="flex min-h-[34px] items-center justify-center gap-2 rounded-md text-[13px] font-extrabold text-white/70" role="tab" aria-selected="false" onclick={openManualDialog}>
 			<span class="i-tabler-link text-lg"></span>
 			URL 入力
+		</button>
+		<button class="flex min-h-[34px] items-center justify-center gap-2 rounded-md text-[13px] font-extrabold text-white/70" role="tab" aria-selected="false" onclick={openMcpDialog}>
+			<span class="i-tabler-plug-connected text-lg"></span>
+			MCP
 		</button>
 	</div>
 
@@ -436,3 +538,72 @@
 		</div>
 	</form>
 </AppDialog>
+
+<AppDialog bind:open={mcpDialogOpen} eyebrow="MCP" title="MCP Connection">
+	<div class="mcp-connection-shell">
+		{#each connectionSnippets as snippet}
+			<section class="mcp-connection-card">
+				<div class="flex items-center justify-between gap-2">
+					<strong class="text-sm">{snippet.label}</strong>
+					<button class="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg bg-[var(--mcp-ink)] px-3 text-xs font-extrabold text-white transition hover:-translate-y-px focus:ring-4 focus:ring-green-500/20" type="button" onclick={() => copyConnectionSnippet(snippet)}>
+						<span class={copiedConnectionId === snippet.id ? 'i-tabler-check text-base' : 'i-tabler-copy text-base'}></span>
+						{copiedConnectionId === snippet.id ? 'Copied' : 'Copy'}
+					</button>
+				</div>
+				<pre class="mt-2 max-h-40 overflow-auto rounded-lg border border-slate-900/10 bg-white/85 p-3 text-[12px] leading-relaxed whitespace-pre-wrap text-slate-800">{snippet.value}</pre>
+			</section>
+		{/each}
+	</div>
+</AppDialog>
+
+<style>
+	.mcp-connection-shell {
+		--mcp-main: #159a63;
+		--mcp-accent: #ffb000;
+		--mcp-ink: #101827;
+		position: relative;
+		display: grid;
+		gap: 0.75rem;
+		overflow: hidden;
+		border-radius: 8px;
+		padding: 0.75rem;
+		background:
+			linear-gradient(135deg, color-mix(in srgb, var(--mcp-main) 18%, transparent), transparent 42%),
+			linear-gradient(315deg, color-mix(in srgb, var(--mcp-accent) 22%, transparent), transparent 44%),
+			#f8fafc;
+	}
+
+	.mcp-connection-shell::before {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		content: '';
+		background-image: linear-gradient(
+			115deg,
+			transparent 0 28%,
+			rgba(255, 255, 255, 0.42) 33%,
+			transparent 40% 100%
+		);
+		animation: mcp-sheen 5.5s linear infinite;
+	}
+
+	.mcp-connection-card {
+		position: relative;
+		z-index: 1;
+		border: 1px solid color-mix(in srgb, var(--mcp-ink) 12%, transparent);
+		border-radius: 8px;
+		background: rgba(255, 255, 255, 0.72);
+		padding: 0.75rem;
+		box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+	}
+
+	@keyframes mcp-sheen {
+		from {
+			transform: translateX(-140%);
+		}
+
+		to {
+			transform: translateX(140%);
+		}
+	}
+</style>

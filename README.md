@@ -168,6 +168,15 @@ bunx vercel --prod
 For Git deployment, import the repository in Vercel and keep the project root at
 the repository root. The build command is provided by `vercel.json`.
 
+The Vercel build also serves the MCP endpoint at:
+
+```text
+https://<your-vercel-domain>/mcp
+```
+
+Open the deployed app and use the `MCP` button on the first screen to copy only
+the URL or client connection snippets for ChatGPT, Codex, and Claude Code.
+
 ## Star History
 
 <a href="https://www.star-history.com/?repos=pnsk-lab%2Fsaizeriya&type=date&legend=top-left">
