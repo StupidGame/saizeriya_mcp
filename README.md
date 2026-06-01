@@ -174,6 +174,14 @@ The Vercel build also serves the MCP endpoint at:
 https://<your-vercel-domain>/mcp
 ```
 
+OAuth is enabled by default for the MCP endpoint, so ChatGPT, Codex, and Claude
+Code can discover the authorization metadata after deployment. No environment
+variables are required for the default consent flow. To require a password on the
+authorization page, set `MCP_OAUTH_PASSWORD`. To rotate the token signing key
+without changing that password, set `MCP_OAUTH_SECRET`. Set
+`MCP_OAUTH_ENABLED=0` only when you intentionally want an unauthenticated MCP
+endpoint.
+
 Open the deployed app and use the `MCP` button on the first screen to copy only
 the URL or client connection snippets for ChatGPT, Codex, and Claude Code.
 

@@ -67,6 +67,9 @@
 
 	const fallbackOrigin = 'https://your-vercel-domain.vercel.app';
 	const mcpURL = $derived(`${appOrigin || fallbackOrigin}/mcp`);
+	const oauthMetadataURL = $derived(
+		`${appOrigin || fallbackOrigin}/.well-known/oauth-protected-resource/mcp`
+	);
 	const connectionSnippets = $derived([
 		{
 			id: 'url',
@@ -74,12 +77,17 @@
 			value: mcpURL
 		},
 		{
+			id: 'oauth',
+			label: 'OAuth Metadata',
+			value: oauthMetadataURL
+		},
+		{
 			id: 'chatgpt',
 			label: 'ChatGPT',
 			value: [
 				'Name: Betterzeriya',
 				`MCP URL: ${mcpURL}`,
-				'Authentication: No authentication',
+				'Authentication: OAuth',
 				'Transport: Streamable HTTP'
 			].join('\n')
 		},
