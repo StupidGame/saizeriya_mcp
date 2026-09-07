@@ -148,7 +148,7 @@ export const handleMcpMessage = async (
         },
         serverInfo,
         instructions:
-          'Use start_order_session with a Saizeriya QR URL first. Preserve officialSession from each tool result and pass it to later session tools.',
+          'Connect to /mcp without authentication. Ask the user for the session ID shown in Betterzeriya MCP connection information, then pass it as sessionId to each ordering tool. Use get_session_state to check the selected table before ordering. Alternatively, start_order_session creates a session from a Saizeriya QR URL and returns its sessionId. search_menu does not require a session.',
       })
 
     case 'ping':

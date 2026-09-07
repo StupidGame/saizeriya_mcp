@@ -6,12 +6,10 @@ import {
   getOfficialAccount,
   getOfficialState,
   lookupOfficialItem,
-  parseOfficialSessionSnapshot,
   serializeState,
   setOfficialPeopleCount,
   showOfficialReceipt,
   submitOfficialCart,
-  type OfficialSessionSnapshot,
 } from '$lib/server/official-client'
 import type { McpToolDefinition } from '$lib/mcp-protocol'
 
@@ -25,19 +23,12 @@ type MenuEntry = {
   imageUrl?: string | null
 }
 
-const objectSchema = {
-  type: 'object',
-  additionalProperties: true,
-} as const
-
 const sessionArgsSchema = {
-  officialSession: {
-    ...objectSchema,
-    description: 'The officialSession object returned by start_order_session or a later tool call.',
-  },
   sessionId: {
     type: 'string',
-    description: 'Optional when officialSession.id is present.',
+    minLength: 1,
+    description:
+      'The session ID shown in Betterzeriya MCP connection information or returned by start_order_session. Ask the user for this ID before using an ordering tool.',
   },
 } as const
 
@@ -89,7 +80,7 @@ export const mcpTools: McpToolDefinition[] = [
     inputSchema: {
       type: 'object',
       properties: sessionArgsSchema,
-      required: ['officialSession'],
+      required: ['sessionId'],
       additionalProperties: false,
     },
     annotations: {
@@ -108,7 +99,7 @@ export const mcpTools: McpToolDefinition[] = [
         ...sessionArgsSchema,
         peopleCount: { type: 'integer', minimum: 1, maximum: 99 },
       },
-      required: ['officialSession', 'peopleCount'],
+      required: ['sessionId', 'peopleCount'],
       additionalProperties: false,
     },
     annotations: {
@@ -127,7 +118,7 @@ export const mcpTools: McpToolDefinition[] = [
         ...sessionArgsSchema,
         code: { type: 'string', pattern: '^\\d{4}$' },
       },
-      required: ['officialSession', 'code'],
+      required: ['sessionId', 'code'],
       additionalProperties: false,
     },
     annotations: {
@@ -158,7 +149,7 @@ export const mcpTools: McpToolDefinition[] = [
           },
         },
       },
-      required: ['officialSession', 'cart'],
+      required: ['sessionId', 'cart'],
       additionalProperties: false,
     },
     annotations: {
@@ -174,7 +165,7 @@ export const mcpTools: McpToolDefinition[] = [
     inputSchema: {
       type: 'object',
       properties: sessionArgsSchema,
-      required: ['officialSession'],
+      required: ['sessionId'],
       additionalProperties: false,
     },
     annotations: {
@@ -190,7 +181,7 @@ export const mcpTools: McpToolDefinition[] = [
     inputSchema: {
       type: 'object',
       properties: sessionArgsSchema,
-      required: ['officialSession'],
+      required: ['sessionId'],
       additionalProperties: false,
     },
     annotations: {
@@ -213,7 +204,7 @@ export const mcpTools: McpToolDefinition[] = [
           description: 'Use true for dessert timing, false for a normal staff call.',
         },
       },
-      required: ['officialSession'],
+      required: ['sessionId'],
       additionalProperties: false,
     },
     annotations: {
@@ -267,27 +258,9 @@ const getOptionalInteger = (
   return value
 }
 
-const getSessionArgs = (args: Record<string, unknown>) => {
-  const officialSession = parseOfficialSessionSnapshot(args.officialSession)
-  if (!officialSession) {
-    throw new Error('officialSession from start_order_session is required')
-  }
-
-  const sessionId =
-    typeof args.sessionId === 'string' && args.sessionId.trim()
-      ? args.sessionId.trim()
-      : officialSession.id
-  return { sessionId, officialSession }
-}
-
-const createSessionPayload = (
-  id: string,
-  state: unknown,
-  officialSession: OfficialSessionSnapshot,
-) => ({
+const createSessionPayload = (id: string, state: unknown) => ({
   sessionId: id,
   state,
-  officialSession,
 })
 
 const searchMenu = (args: Record<string, unknown>) => {
@@ -312,47 +285,46 @@ const startOrderSession = async (args: Record<string, unknown>) => {
   const session = await createOfficialSession(qrURLSource)
 
   if (peopleCount === undefined) {
-    return createSessionPayload(session.id, serializeState(session.state), session.officialSession)
+    return createSessionPayload(session.id, serializeState(session.state))
   }
 
-  const updated = await setOfficialPeopleCount(session.id, peopleCount, session.officialSession)
-  return createSessionPayload(session.id, serializeState(updated.state), updated.officialSession)
+  const updated = await setOfficialPeopleCount(session.id, peopleCount)
+  return createSessionPayload(session.id, serializeState(updated.state))
 }
 
 const getState = async (args: Record<string, unknown>) => {
-  const { sessionId, officialSession } = getSessionArgs(args)
-  const result = await getOfficialState(sessionId, officialSession)
-  return createSessionPayload(sessionId, serializeState(result.state), result.officialSession)
+  const sessionId = getString(args, 'sessionId')
+  const result = await getOfficialState(sessionId)
+  return createSessionPayload(sessionId, serializeState(result.state))
 }
 
 const setPeopleCount = async (args: Record<string, unknown>) => {
-  const { sessionId, officialSession } = getSessionArgs(args)
+  const sessionId = getString(args, 'sessionId')
   const peopleCount = getOptionalInteger(args, 'peopleCount', 1, 99)
   if (peopleCount === undefined) {
     throw new Error('peopleCount is required')
   }
 
-  const result = await setOfficialPeopleCount(sessionId, peopleCount, officialSession)
-  return createSessionPayload(sessionId, serializeState(result.state), result.officialSession)
+  const result = await setOfficialPeopleCount(sessionId, peopleCount)
+  return createSessionPayload(sessionId, serializeState(result.state))
 }
 
 const lookupItem = async (args: Record<string, unknown>) => {
-  const { sessionId, officialSession } = getSessionArgs(args)
+  const sessionId = getString(args, 'sessionId')
   const code = getString(args, 'code')
   if (!/^\d{4}$/.test(code)) {
     throw new Error('code must be 4 digits')
   }
 
-  const result = await lookupOfficialItem(sessionId, code, officialSession)
+  const result = await lookupOfficialItem(sessionId, code)
   return {
     sessionId,
     ...result.result,
-    officialSession: result.officialSession,
   }
 }
 
 const submitOrder = async (args: Record<string, unknown>) => {
-  const { sessionId, officialSession } = getSessionArgs(args)
+  const sessionId = getString(args, 'sessionId')
   const cart = Array.isArray(args.cart) ? args.cart : []
   if (cart.length === 0) {
     throw new Error('cart must include at least one item')
@@ -368,13 +340,13 @@ const submitOrder = async (args: Record<string, unknown>) => {
     return { id, count }
   })
 
-  const result = await submitOfficialCart(sessionId, normalizedCart, officialSession)
-  return createSessionPayload(sessionId, serializeState(result.state), result.officialSession)
+  const result = await submitOfficialCart(sessionId, normalizedCart)
+  return createSessionPayload(sessionId, serializeState(result.state))
 }
 
 const getAccount = async (args: Record<string, unknown>) => {
-  const { sessionId, officialSession } = getSessionArgs(args)
-  const result = await getOfficialAccount(sessionId, officialSession)
+  const sessionId = getString(args, 'sessionId')
+  const { officialSession: _snapshot, ...result } = await getOfficialAccount(sessionId)
   return {
     sessionId,
     ...result,
@@ -382,8 +354,8 @@ const getAccount = async (args: Record<string, unknown>) => {
 }
 
 const showReceipt = async (args: Record<string, unknown>) => {
-  const { sessionId, officialSession } = getSessionArgs(args)
-  const result = await showOfficialReceipt(sessionId, officialSession)
+  const sessionId = getString(args, 'sessionId')
+  const { officialSession: _snapshot, ...result } = await showOfficialReceipt(sessionId)
   return {
     sessionId,
     ...result,
@@ -391,8 +363,11 @@ const showReceipt = async (args: Record<string, unknown>) => {
 }
 
 const callStaff = async (args: Record<string, unknown>) => {
-  const { sessionId, officialSession } = getSessionArgs(args)
-  const result = await callOfficialStaff(sessionId, args.after === true, officialSession)
+  const sessionId = getString(args, 'sessionId')
+  const { officialSession: _snapshot, ...result } = await callOfficialStaff(
+    sessionId,
+    args.after === true,
+  )
   return {
     sessionId,
     ...result,

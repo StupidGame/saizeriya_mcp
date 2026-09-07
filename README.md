@@ -174,16 +174,32 @@ The Vercel build also serves the MCP endpoint at:
 https://<your-vercel-domain>/mcp
 ```
 
-OAuth is enabled by default for the MCP endpoint, so ChatGPT, Codex, and Claude
-Code can discover the authorization metadata after deployment. No environment
-variables are required for the default consent flow. To require a password on the
-authorization page, set `MCP_OAUTH_PASSWORD`. To rotate the token signing key
-without changing that password, set `MCP_OAUTH_SECRET`. Set
-`MCP_OAUTH_ENABLED=0` only when you intentionally want an unauthenticated MCP
-endpoint.
+The `/mcp` endpoint is always available using Streamable HTTP, without OAuth or
+an ordering session. Select **no authentication** in the MCP client. Initialization,
+tool discovery, and `search_menu` work before a table is connected.
 
-Open the deployed app and use the `MCP` button on the first screen to copy only
-the URL or client connection snippets for ChatGPT, Codex, and Claude Code.
+Read the table QR code in Betterzeriya, then open **MCP 接続情報** using the `MCP`
+button on the QR screen or the ordering screen. The dialog displays the fixed MCP
+address and the ordering session ID, each with a copy button. Give the session ID
+to your AI when using ordering tools. The ID is passed as the `sessionId` tool
+argument; it is not part of the URL or an `Mcp-Session-Id` transport header.
+
+For example, call `get_session_state` with `{ "sessionId": "<copied-session-id>" }`
+to check the table before ordering. `start_order_session` can also create a session
+from a QR URL and returns its ID. Session tools no longer require an
+`officialSession` object.
+
+On Vercel, connect an [Upstash Redis database](https://upstash.com/docs/redis/howto/vercelintegration)
+and configure one of these server-only environment variable pairs, then redeploy:
+
+- `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`
+- `KV_REST_API_URL` and `KV_REST_API_TOKEN`
+
+The shared store keeps browser and MCP requests using the same session across
+Vercel instances. Sessions expire after six hours of inactivity. The variables
+are required for ordering sessions on Vercel; `/mcp` initialization and menu search
+remain available without them. Local Node development falls back to memory and
+does not require Redis. Browser mode requires a persistent Node server.
 
 ## Star History
 

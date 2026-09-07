@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import AppDialog from '$lib/components/AppDialog.svelte';
+	import McpConnectionDialog from '$lib/components/McpConnectionDialog.svelte';
 	import defaultMenuData from '$lib/assets/data/menu.json';
 	import { calculateExactBudgetGacha, type ExactBudgetSelection } from '$lib/gacha';
 	import { filterMenuForServicePeriod, getMenuServicePeriod } from '$lib/menu-availability';
@@ -147,6 +148,7 @@
 	let busy = $state(false);
 	let activeTab = $state<ActiveTab>('add');
 	let gachaDialogOpen = $state(false);
+	let mcpDialogOpen = $state(false);
 	let gachaResults = $state<ExactBudgetSelection<MenuItem>[]>([]);
 	let gachaBudget = $state(1000);
 	let gachaCount = $state(0n);
@@ -606,7 +608,8 @@
 				<span>{clientState.peopleCount} 名</span>
 			</div>
 		{/if}
-		<div class="grid grid-cols-2 gap-2.5 min-[561px]:flex">
+		<div class="grid grid-cols-3 gap-2.5 min-[561px]:flex">
+			<button class="min-h-11 rounded-lg border border-slate-300 bg-white px-4 font-extrabold text-slate-950" aria-label="MCP 接続情報" onclick={() => (mcpDialogOpen = true)}>MCP</button>
 			<button class="min-h-11 rounded-lg border border-slate-300 bg-white px-4 font-extrabold text-slate-950 disabled:cursor-not-allowed disabled:opacity-55" onclick={loadState} disabled={busy}>更新</button>
 			<button class="min-h-11 rounded-lg border border-slate-300 bg-white px-4 font-extrabold text-slate-950" onclick={() => goto('/')}>QR</button>
 		</div>
@@ -923,6 +926,8 @@
 		</a>
 	</nav>
 </main>
+
+<McpConnectionDialog bind:open={mcpDialogOpen} {sessionId} />
 
 <AppDialog bind:open={gachaDialogOpen} eyebrow="Gacha" title={`${gachaBudget}円ガチャ結果`}>
 	<form class="grid gap-3" onsubmit={(event) => event.preventDefault()}>

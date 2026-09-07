@@ -1,7 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit'
 import { callMcpTool, mcpTools } from '$lib/server/mcp-tools'
 import { createParseError, handleMcpMessage, mcpProtocolVersion } from '$lib/mcp-protocol'
-import { requireMcpBearer } from '$lib/server/mcp-oauth'
 
 const allowedBrowserOrigins = new Set([
   'chatgpt.com',
@@ -71,14 +70,6 @@ export const POST: RequestHandler = async ({ request, url }) => {
 
   if (!isAllowedOrigin(origin, url.origin)) {
     return json(createParseError('Origin is not allowed'), { status: 403, headers })
-  }
-
-  const unauthorized = await requireMcpBearer(request, url)
-  if (unauthorized) {
-    for (const [key, value] of Object.entries(headers)) {
-      unauthorized.headers.set(key, value)
-    }
-    return unauthorized
   }
 
   const message = await request.json().catch(() => undefined)

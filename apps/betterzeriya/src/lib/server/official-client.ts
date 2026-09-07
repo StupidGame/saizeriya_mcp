@@ -5,6 +5,12 @@ import {
   type LookupItemResult,
 } from 'saizeriya.js'
 import { env } from '$env/dynamic/private'
+import {
+  isSessionExpired,
+  loadSessionSnapshot,
+  saveSessionSnapshot,
+  sessionTtlMs,
+} from './session-store'
 
 type OfficialClient = Awaited<ReturnType<typeof createClient>>
 type BrowserOfficialClient = Awaited<
@@ -44,7 +50,6 @@ interface BrowserSessionRecord {
 }
 
 const browserSessions = new Map<string, BrowserSessionRecord>()
-const sessionTtlMs = 1000 * 60 * 60 * 6
 const useBrowserMode = () => env.BROWSER === '1'
 const browserLaunchOptions = () => ({
   headless: true,
@@ -139,7 +144,9 @@ export const createOfficialSession = async (qrURLSource: string) => {
   return {
     id,
     state: client.getState(),
-    officialSession: createSnapshot(id, client, cookieFetch.getCookies(), now, 'fetch'),
+    officialSession: await saveSessionSnapshot(
+      createSnapshot(id, client, cookieFetch.getCookies(), now, 'fetch'),
+    ),
   }
 }
 
@@ -181,6 +188,9 @@ export const parseOfficialSessionSnapshot = (
 }
 
 const createClientFromSnapshot = async (id: string, snapshot?: OfficialSessionSnapshot) => {
+  if (snapshot && snapshot.id !== id) {
+    throw new Error('Session ID does not match the snapshot')
+  }
   if (useBrowserMode()) {
     const session = getBrowserSession(id)
     return {
@@ -189,19 +199,27 @@ const createClientFromSnapshot = async (id: string, snapshot?: OfficialSessionSn
     }
   }
 
-  if (snapshot?.id !== id) {
-    throw new Error('Session snapshot not found')
+  // The server copy includes changes made by MCP or another browser request.
+  // Browser snapshots can restore a session after a local server restart.
+  const storedSnapshot = await loadSessionSnapshot(id)
+  const currentSnapshot = storedSnapshot ?? snapshot
+  if (!currentSnapshot || isSessionExpired(currentSnapshot)) {
+    throw new Error(
+      'Session not found or expired. Read the table QR code again and use the new session ID.',
+    )
   }
 
-  const cookieFetch = createCookieFetch(snapshot.cookies)
+  const cookieFetch = createCookieFetch(currentSnapshot.cookies)
   const client = await createClient({
-    initialState: snapshot.state,
+    initialState: currentSnapshot.state,
     fetchSource: cookieFetch.fetchSource,
   })
   return {
     client,
     getSnapshot: () =>
-      createSnapshot(id, client, cookieFetch.getCookies(), snapshot.createdAt, 'fetch'),
+      saveSessionSnapshot(
+        createSnapshot(id, client, cookieFetch.getCookies(), currentSnapshot.createdAt, 'fetch'),
+      ),
   }
 }
 
@@ -212,7 +230,7 @@ export const setOfficialPeopleCount = async (
 ) => {
   const session = await createClientFromSnapshot(id, snapshot)
   const state = await session.client.setPeopleCount(peopleCount)
-  return { state, officialSession: session.getSnapshot() }
+  return { state, officialSession: await session.getSnapshot() }
 }
 
 export const serializeState = (state: ClientState) => ({
@@ -227,7 +245,7 @@ export const lookupOfficialItem = async (
 ): Promise<{ result: LookupItemResult; officialSession: OfficialSessionSnapshot }> => {
   const session = await createClientFromSnapshot(id, snapshot)
   const result = await session.client.lookupItem(code)
-  return { result, officialSession: session.getSnapshot() }
+  return { result, officialSession: await session.getSnapshot() }
 }
 
 export const submitOfficialCart = async (
@@ -243,7 +261,7 @@ export const submitOfficialCart = async (
     await session.client.addItem(item.id, { count: item.count })
   }
   const state = await session.client.submitOrder()
-  return { state, officialSession: session.getSnapshot() }
+  return { state, officialSession: await session.getSnapshot() }
 }
 
 const createCheckoutCode = (state: ClientState, account: AccountSummary) =>
@@ -265,7 +283,7 @@ export const getOfficialAccount = async (
     account: result.account,
     barcodeValue: createCheckoutCode(result.state, result.account),
     receiptShown: false,
-    officialSession: session.getSnapshot(),
+    officialSession: await session.getSnapshot(),
   }
 }
 
@@ -284,7 +302,7 @@ export const showOfficialReceipt = async (
       createCheckoutCode(receiptResult.state, accountResult.account),
     barcodeImageSrc: receiptResult.receipt.barcodeImageSrc,
     receiptShown: true,
-    officialSession: session.getSnapshot(),
+    officialSession: await session.getSnapshot(),
   }
 }
 
@@ -295,10 +313,10 @@ export const callOfficialStaff = async (
 ) => {
   const session = await createClientFromSnapshot(id, snapshot)
   const result = after ? await session.client.callDessert() : await session.client.callStaff()
-  return { result, officialSession: session.getSnapshot() }
+  return { result, officialSession: await session.getSnapshot() }
 }
 
 export const getOfficialState = async (id: string, snapshot?: OfficialSessionSnapshot) => {
   const session = await createClientFromSnapshot(id, snapshot)
-  return { state: session.client.getState(), officialSession: session.getSnapshot() }
+  return { state: session.client.getState(), officialSession: await session.getSnapshot() }
 }
