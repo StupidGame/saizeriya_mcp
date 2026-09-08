@@ -10,9 +10,9 @@ const getRedisConfig = () => {
   if (url && token) {
     return { url, token }
   }
-  if (url || token || env.VERCEL) {
+  if (url || token) {
     throw new Error(
-      'Session storage requires UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN (or KV_REST_API_URL and KV_REST_API_TOKEN).',
+      'Session storage configuration requires both UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN (or both KV_REST_API_URL and KV_REST_API_TOKEN).',
     )
   }
   return undefined

@@ -189,17 +189,20 @@ to check the table before ordering. `start_order_session` can also create a sess
 from a QR URL and returns its ID. Session tools no longer require an
 `officialSession` object.
 
-On Vercel, connect an [Upstash Redis database](https://upstash.com/docs/redis/howto/vercelintegration)
-and configure one of these server-only environment variable pairs, then redeploy:
+For reliable session-ID access across Vercel instances and deployments, connect an
+[Upstash Redis database](https://upstash.com/docs/redis/howto/vercelintegration),
+configure one of these server-only environment variable pairs, then redeploy:
 
 - `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`
 - `KV_REST_API_URL` and `KV_REST_API_TOKEN`
 
 The shared store keeps browser and MCP requests using the same session across
-Vercel instances. Sessions expire after six hours of inactivity. The variables
-are required for ordering sessions on Vercel; `/mcp` initialization and menu search
-remain available without them. Local Node development falls back to memory and
-does not require Redis. Browser mode requires a persistent Node server.
+Vercel instances. Sessions expire after six hours of inactivity. Without these
+variables, browser ordering falls back to the snapshot stored in the browser and
+process-local memory, so QR ordering still works. Copied MCP session IDs can be lost
+when Vercel routes a request to another instance or restarts one, so configure the
+shared store for reliable MCP ordering tools. Local Node development does not
+require Redis. Browser mode requires a persistent Node server.
 
 ## Star History
 

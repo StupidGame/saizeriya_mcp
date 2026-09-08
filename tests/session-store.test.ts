@@ -68,9 +68,21 @@ describe('shared session storage', () => {
     },
   )
 
-  it('fails clearly on Vercel without a shared store instead of losing sessions between instances', async () => {
+  it('falls back to memory on Vercel when a shared store is not configured', async () => {
     const store = await loadInstance({ VERCEL: '1' })
-    await expect(store.saveSessionSnapshot(snapshot())).rejects.toThrow('UPSTASH_REDIS_REST_URL')
+    const session = snapshot()
+    await expect(store.saveSessionSnapshot(session)).resolves.toEqual(session)
+    expect(await store.loadSessionSnapshot(session.id)).toEqual(session)
+  })
+
+  it('fails clearly when only half of the Redis configuration is provided', async () => {
+    const store = await loadInstance({
+      VERCEL: '1',
+      UPSTASH_REDIS_REST_URL: 'https://redis.example',
+    })
+    await expect(store.saveSessionSnapshot(snapshot())).rejects.toThrow(
+      'requires both UPSTASH_REDIS_REST_URL',
+    )
   })
 
   it('does not silently use local memory when Redis fails', async () => {

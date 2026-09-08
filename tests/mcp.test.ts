@@ -63,7 +63,8 @@ describe('public MCP endpoint and ordering sessions', () => {
     expect((await callTool('search_menu', { query: '1202' })).isError).toBeUndefined()
   })
 
-  it('uses an ID from a browser-created session and keeps browser state in sync after MCP changes', async () => {
+  it('uses an ID from a browser-created session on Vercel without Redis', async () => {
+    env.VERCEL = '1'
     const response = await postSession({
       request: new Request('https://betterzeriya.example/api/sessions', {
         method: 'POST',
